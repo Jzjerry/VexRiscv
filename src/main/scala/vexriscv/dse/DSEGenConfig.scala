@@ -1,16 +1,12 @@
-package vexriscv
-
-import java.io.{File, OutputStream}
-import java.util.concurrent.{ForkJoinPool, TimeUnit}
-import org.apache.commons.io.FileUtils
-import org.scalatest.{BeforeAndAfterAll, ParallelTestExecution, Tag, Transformer}
-import org.scalatest.funsuite.AnyFunSuite
+/* Modified from test/scala/vexriscv/TestIndividualFeatures.scala */
+package vexriscv.dse
 
 import spinal.core._
 import spinal.lib.DoCmd
 import vexriscv.demo._
 import vexriscv.ip.{DataCacheConfig, InstructionCacheConfig}
 import vexriscv.plugin._
+import vexriscv.{plugin, VexRiscv, VexRiscvConfig}
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -542,7 +538,6 @@ class MmuPmpDimension extends VexRiscvDimension("DBus") {
 }
 
 
-
 trait CatchAllPosition
 
 
@@ -603,97 +598,14 @@ class DecoderDimension extends VexRiscvDimension("Decoder") {
         catchIllegalInstruction = catchAll,
         throwIllegalInstruction = false
       )
-
-//      override def isCompatibleWith(positions: Seq[ConfigPosition[VexRiscvConfig]]) = catchAll == positions.exists(_.isInstanceOf[CatchAllPosition])
     }
   }
 }
 
-object PlayFuture extends App{
-  implicit val ec = ExecutionContext.global
-  val x =  for(i <- 0 until 160) yield Future {
-    print(s"$i ")
-    Thread.sleep(1000)
-  }
-
-  Thread.sleep(8000)
-}
-
-class MultithreadedFunSuite(threadCount : Int) extends AnyFunSuite {
-  val finalThreadCount = if(threadCount > 0) threadCount else {
-    new oshi.SystemInfo().getHardware.getProcessor.getLogicalProcessorCount
-  }
-  implicit val ec = ExecutionContext.fromExecutorService(
-    new ForkJoinPool(finalThreadCount, ForkJoinPool.defaultForkJoinWorkerThreadFactory, null, true)
-  )
-  class Job(body : => Unit){
-    val originalOutput = Console.out
-    val buffer = mutable.Queue[Char]()
-    var bufferEnabled = true
-    def redirector() = new OutputStream{
-      override def write(i: Int): Unit = synchronized {
-        if(bufferEnabled) buffer += i.toChar
-        else originalOutput.print(i.toChar)
-      }
-    }
-    val future = Future{
-      Console.withOut(redirector()){
-        Console.withErr(redirector())(body)
-      }
-    }
-
-    def join(): Unit = {
-      Thread.sleep(50)
-      synchronized{
-        bufferEnabled = false
-        buffer.foreach(originalOutput.print)
-      }
-      Await.result(future, Duration.Inf)
-    }
-  }
-
-  def testMp(testName: String, testTags: Tag*)(testFun: => Unit) {
-    val job = new Job(testFun)
-    super.test(testName, testTags :_*)(job.join())
-  }
-  protected def testSingleThread(testName: String, testTags: Tag*)(testFun: => Unit) {
-    super.test(testName, testTags :_*)(testFun)
-  }
-}
-
-
-class FunTestPara extends MultithreadedFunSuite(3){
-  def createTest(name : String): Unit ={
-    testMp(name){
-      for(i <- 0 to 4) {
-        println(s"$name $i")
-        Thread.sleep(500)
-      }
-    }
-  }
-  (0 to 80).map(_.toString).foreach(createTest)
-}
-
-//class FunTestPlay extends FunSuite {
-//  def createTest(name : String): Unit ={
-//    test(name){
-//      Thread.sleep(500)
-//      for(i <- 0 to 4) {
-//        println(s"$name    $i")
-//        Thread.sleep(500)
-//      }
-//    }
-//  }
-//  (0 to 80).map(_.toString).foreach(createTest)
-//}
-
-class TestIndividualFeatures extends MultithreadedFunSuite(sys.env.getOrElse("VEXRISCV_REGRESSION_THREAD_COUNT", "0").toInt) {
+object GenRandomVexriscv extends App {
   val testCount = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_COUNT", "100").toInt
   val seed = sys.env.getOrElse("VEXRISCV_REGRESSION_SEED", Random.nextLong().toString).toLong
-  val testId : Set[Int] =  sys.env.get("VEXRISCV_REGRESSION_TEST_ID") match {
-    case Some(x) if x != "" => x.split(',').map(_.toInt).toSet
-    case _ => (0 until testCount).toSet
-  }
+
   val rvcRate = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_RVC_RATE", "0.5").toDouble
   val linuxRate = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_LINUX_RATE", "0.3").toDouble
   val machineOsRate = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_MACHINE_OS_RATE", "0.5").toDouble
@@ -705,7 +617,6 @@ class TestIndividualFeatures extends MultithreadedFunSuite(sys.env.getOrElse("VE
   val demRate = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_DEM_RATE", "0.5").toDouble
   val stopOnError = sys.env.getOrElse("VEXRISCV_REGRESSION_STOP_ON_ERROR", "yes")
   val lock = new{}
-
 
 
   val dimensions = List(
@@ -725,38 +636,13 @@ class TestIndividualFeatures extends MultithreadedFunSuite(sys.env.getOrElse("VE
 
   var clockCounter = 0l
   var startAt = System.currentTimeMillis()
-  def doTest(positionsToApply : List[VexRiscvPosition], prefix : String = "", testSeed : Int, universes : mutable.HashSet[VexRiscvUniverse]): Unit ={
+  def doGen(positionsToApply : List[VexRiscvPosition], universes : mutable.HashSet[VexRiscvUniverse]): Unit ={
+
     val noMemory = universes.contains(VexRiscvUniverse.NO_MEMORY)
     val noWriteback = universes.contains(VexRiscvUniverse.NO_WRITEBACK)
-    val name = (if(noMemory) "noMemoryStage_" else "") + (if(noWriteback) "noWritebackStage_" else "") + positionsToApply.map(d => d.dimension.name + "_" + d.name).mkString("_")
-    val workspace = "simWorkspace"
-    val project = s"$workspace/$prefix"
-    def doCmd(cmd: String): String = {
-      val stdOut = new StringBuilder()
-      class Logger extends ProcessLogger {
-        override def err(s: => String): Unit = {
-          if (!s.startsWith("ar: creating ")) println(s)
-        }
-        override def out(s: => String): Unit = {
-          println(s)
-          stdOut ++= s
-        }
-        override def buffer[T](f: => T) = f
-      }
-      Process(cmd, new File(project)).!(new Logger)
-      stdOut.toString()
-    }
 
-    testMp(prefix + name) {
-      println("START TEST " + prefix + name)
-
-      //Cleanup
-      FileUtils.deleteDirectory(new File(project))
-      FileUtils.forceMkdir(new File(project))
-
-      //Generate RTL
-      FileUtils.deleteQuietly(new File("VexRiscv.v"))
-      SpinalConfig(targetDirectory = project).generateVerilog{
+    //Generate RTL
+    SpinalVerilog({
         val config = VexRiscvConfig(
           withMemoryStage = !noMemory,
           withWriteBackStage = !noWriteback,
@@ -767,108 +653,50 @@ class TestIndividualFeatures extends MultithreadedFunSuite(sys.env.getOrElse("VE
         )
         for (positionToApply <- positionsToApply) positionToApply.applyOn(config)
         new VexRiscv(config)
-      }
-
-      //Setup test
-      val files = List("main.cpp", "jtag.h", "encoding.h" ,"makefile", "dhrystoneO3.logRef", "dhrystoneO3C.logRef","dhrystoneO3MC.logRef","dhrystoneO3M.logRef")
-      files.foreach(f => FileUtils.copyFileToDirectory(new File(s"src/test/cpp/regression/$f"), new File(project)))
-
-      //Test RTL
-      val debug = true
-      val stdCmd = (s"make run REGRESSION_PATH=../../src/test/cpp/regression VEXRISCV_FILE=VexRiscv.v WITH_USER_IO=no REDO=10 TRACE=${if(debug) "yes" else "no"} TRACE_START=100000000000ll FLOW_INFO=no STOP_ON_ERROR=$stopOnError DHRYSTONE=yes COREMARK=${coremarkRegression} THREAD_COUNT=1 ") + s" SEED=${testSeed} "
-      val testCmd = stdCmd + (positionsToApply).map(_.testParam).mkString(" ")
-      println(testCmd)
-      val str = doCmd(testCmd)
-      assert(str.contains("REGRESSION SUCCESS") && !str.contains("Broken pipe"))
-      val pattern = "Had simulate ([0-9]+)".r
-      val hit = pattern.findFirstMatchIn(str)
-
-      lock.synchronized(clockCounter += hit.get.group(1).toLong)
+      })
     }
-  }
 
   val rand = new Random(seed)
 
-  testMp("Info"){
-    println(s"MAIN_SEED=$seed")
-  }
   println(s"Seed=$seed")
-  for(i <- 0 until testCount){
-    var positions : List[VexRiscvPosition] = null
-    var universe = mutable.HashSet[VexRiscvUniverse]()
-    if(rand.nextDouble() < 0.5) universe += VexRiscvUniverse.EXECUTE_RF
-    if(linuxRate > rand.nextDouble()) {
+
+  var positions : List[VexRiscvPosition] = null
+  var universe = mutable.HashSet[VexRiscvUniverse]()
+  if(rand.nextDouble() < 0.5) universe += VexRiscvUniverse.EXECUTE_RF
+  if(linuxRate > rand.nextDouble()) {
       universe += VexRiscvUniverse.CATCH_ALL
       universe += VexRiscvUniverse.MMU
       universe += VexRiscvUniverse.FORCE_MULDIV
       universe += VexRiscvUniverse.SUPERVISOR
-      if(demwRate < rand.nextDouble()){
+    if(demwRate < rand.nextDouble()){
         universe += VexRiscvUniverse.NO_WRITEBACK
-      }
-    } else if (secureRate > rand.nextDouble()) {
+    }
+  } else if (secureRate > rand.nextDouble()) {
         universe += VexRiscvUniverse.CACHE_ALL
         universe += VexRiscvUniverse.CATCH_ALL
         universe += VexRiscvUniverse.PMP
-        if(demwRate < rand.nextDouble()){
+      if(demwRate < rand.nextDouble()){
           universe += VexRiscvUniverse.NO_WRITEBACK
-        }
-    } else {
-      if(machineOsRate > rand.nextDouble()) {
+      }
+  } else {
+    if(machineOsRate > rand.nextDouble()) {
         universe += VexRiscvUniverse.CATCH_ALL
-        if(demwRate < rand.nextDouble()){
+      if(demwRate < rand.nextDouble()){
           universe += VexRiscvUniverse.NO_WRITEBACK
-        }
-      }
-      if(demwRate > rand.nextDouble()){
-      }else if(demRate > rand.nextDouble()){
-        universe += VexRiscvUniverse.NO_WRITEBACK
-      } else {
-        universe += VexRiscvUniverse.NO_WRITEBACK
-        universe += VexRiscvUniverse.NO_MEMORY
       }
     }
-
-    do{
-      positions = dimensions.map(d => d.randomPosition(universe.toList, rand))
-    }while(!positions.forall(_.isCompatibleWith(positions)))
-
-    val testSeed = rand.nextInt()
-    if(testId.contains(i))
-      doTest(positions,"test_id_" + i + "_", testSeed, universe)
-    Hack.dCounter += 1
-  }
-  testSingleThread("report"){
-    val time = (System.currentTimeMillis() - startAt)*1e-3
-    val clockPerSecond = (clockCounter/time*1e-3).toLong
-    println(s"Duration=${(time/60).toInt}mn clocks=${(clockCounter*1e-6).toLong}M clockPerSecond=${clockPerSecond}K")
-  }
-}
-
-
-object TestIndividualExplore extends App{
-  val seeds = mutable.HashSet[Int]()
-  val futures = mutable.ArrayBuffer[Future[Unit]]()
-  implicit val ec = ExecutionContext.fromExecutorService(
-    new ForkJoinPool(24, ForkJoinPool.defaultForkJoinWorkerThreadFactory, null, true)
-  )
-  for(i <- 0 until 1000){
-    val seed = Random.nextInt(1000000) + 1
-    futures += Future {
-      if (!seeds.contains(seed)) {
-        val cmd = s"make run REGRESSION_PATH=../../src/test/cpp/regression VEXRISCV_FILE=VexRiscv.v WITH_USER_IO=no REDO=10 TRACE=yes TRACE_START=100000000000ll FLOW_INFO=no STOP_ON_ERROR=no DHRYSTONE=yes COREMARK=yes THREAD_COUNT=1   IBUS=CACHED IBUS_DATA_WIDTH=128 COMPRESSED=yes DBUS=SIMPLE LRSC=yes  MUL=yes DIV=yes      FREERTOS=0 ZEPHYR=2 LINUX_REGRESSION=yes SUPERVISOR=yes  CONCURRENT_OS_EXECUTIONS=yes MMU=yes PMP=no SEED=$seed"
-        val workspace = s"explor/seed_$seed"
-        FileUtils.copyDirectory(new File("simWorkspace/ref"), new File(workspace))
-        val str = DoCmd.doCmdWithLog(cmd, workspace)
-        if(!str.contains("REGRESSION SUCCESS")){
-          println(s"seed $seed FAILED with\n\n$str")
-          sys.exit(1)
-        }
-        FileUtils.deleteDirectory(new File(workspace))
-        println(s"seed $seed PASSED")
-      }
+    if(demwRate > rand.nextDouble()){
+    }else if(demRate > rand.nextDouble()){
+      universe += VexRiscvUniverse.NO_WRITEBACK
+    } else {
+      universe += VexRiscvUniverse.NO_WRITEBACK
+      universe += VexRiscvUniverse.NO_MEMORY
     }
   }
 
-  futures.foreach(Await.result(_, Duration.Inf))
+  do{
+    positions = dimensions.map(d => d.randomPosition(universe.toList, rand))
+  }while(!positions.forall(_.isCompatibleWith(positions)))
 
+  doGen(positions, universe)
 }
