@@ -603,14 +603,13 @@ class DecoderDimension extends VexRiscvDimension("Decoder") {
 }
 
 object GenRandomVexriscv extends App {
-  val testCount = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_COUNT", "100").toInt
   val seed = sys.env.getOrElse("VEXRISCV_REGRESSION_SEED", Random.nextLong().toString).toLong
 
   val rvcRate = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_RVC_RATE", "0.5").toDouble
-  val linuxRate = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_LINUX_RATE", "0.3").toDouble
+  val linuxRate = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_LINUX_RATE", "0").toDouble
   val machineOsRate = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_MACHINE_OS_RATE", "0.5").toDouble
   val secureRate = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_SECURE_RATE", "0.2").toDouble
-  val linuxRegression = sys.env.getOrElse("VEXRISCV_REGRESSION_LINUX_REGRESSION", "yes")
+  val linuxRegression = sys.env.getOrElse("VEXRISCV_REGRESSION_LINUX_REGRESSION", "no")
   val coremarkRegression = sys.env.getOrElse("VEXRISCV_REGRESSION_COREMARK", "yes")
   val zephyrCount = sys.env.getOrElse("VEXRISCV_REGRESSION_ZEPHYR_COUNT", "4")
   val demwRate = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_DEMW_RATE", "0.6").toDouble
@@ -628,7 +627,7 @@ object GenRandomVexriscv extends App {
     new HazardDimension,
     new RegFileDimension,
     new SrcDimension,
-    new CsrDimension(/*sys.env.getOrElse("VEXRISCV_REGRESSION_FREERTOS_COUNT", "1")*/ "0", zephyrCount, linuxRegression), //Freertos old port software is broken
+    new CsrDimension("0", zephyrCount, linuxRegression), 
     new DecoderDimension,
     new DebugDimension,
     new MmuPmpDimension
@@ -699,4 +698,7 @@ object GenRandomVexriscv extends App {
   }while(!positions.forall(_.isCompatibleWith(positions)))
 
   doGen(positions, universe)
+  for(pos <- positions){
+    println(pos, pos.name)
+  }
 }
