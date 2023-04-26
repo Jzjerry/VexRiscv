@@ -606,9 +606,6 @@ object GenRandomVexriscv extends App {
   val seed = sys.env.getOrElse("VEXRISCV_REGRESSION_SEED", Random.nextLong().toString).toLong
 
   val rvcRate = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_RVC_RATE", "0.5").toDouble
-  val linuxRate = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_LINUX_RATE", "0").toDouble
-  val machineOsRate = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_MACHINE_OS_RATE", "0.5").toDouble
-  val secureRate = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_SECURE_RATE", "0").toDouble
   val linuxRegression = sys.env.getOrElse("VEXRISCV_REGRESSION_LINUX_REGRESSION", "no")
   val coremarkRegression = sys.env.getOrElse("VEXRISCV_REGRESSION_COREMARK", "yes")
   val zephyrCount = sys.env.getOrElse("VEXRISCV_REGRESSION_ZEPHYR_COUNT", "4")
@@ -663,28 +660,6 @@ object GenRandomVexriscv extends App {
   var positions : List[VexRiscvPosition] = null
   var universe = mutable.HashSet[VexRiscvUniverse]()
   if(rand.nextDouble() < 0.5) universe += VexRiscvUniverse.EXECUTE_RF
-  if(linuxRate > rand.nextDouble()) {
-      universe += VexRiscvUniverse.CATCH_ALL
-      universe += VexRiscvUniverse.MMU
-      universe += VexRiscvUniverse.FORCE_MULDIV
-      universe += VexRiscvUniverse.SUPERVISOR
-    if(demwRate < rand.nextDouble()){
-        universe += VexRiscvUniverse.NO_WRITEBACK
-    }
-  } else if (secureRate > rand.nextDouble()) {
-        universe += VexRiscvUniverse.CACHE_ALL
-        universe += VexRiscvUniverse.CATCH_ALL
-        universe += VexRiscvUniverse.PMP
-      if(demwRate < rand.nextDouble()){
-          universe += VexRiscvUniverse.NO_WRITEBACK
-      }
-  } else {
-    if(machineOsRate > rand.nextDouble()) {
-        universe += VexRiscvUniverse.CATCH_ALL
-      if(demwRate < rand.nextDouble()){
-          universe += VexRiscvUniverse.NO_WRITEBACK
-      }
-    }
     if(demwRate > rand.nextDouble()){
     }else if(demRate > rand.nextDouble()){
       universe += VexRiscvUniverse.NO_WRITEBACK
@@ -692,7 +667,6 @@ object GenRandomVexriscv extends App {
       universe += VexRiscvUniverse.NO_WRITEBACK
       universe += VexRiscvUniverse.NO_MEMORY
     }
-  }
 
   do{
     positions = dimensions.map(d => d.randomPosition(universe.toList, rand))
