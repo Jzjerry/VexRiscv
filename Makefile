@@ -8,7 +8,7 @@ LOG_PATH = ../log
 # ${RTL}: ${SCALA_FILE}
 # 	sbt ${SBT_RUN}
 
-all: ${RTL}
+all: clean ${RTL}
 
 ${RTL}: ${SCALA_SRC}
 	sbt ${SBT_RUN}

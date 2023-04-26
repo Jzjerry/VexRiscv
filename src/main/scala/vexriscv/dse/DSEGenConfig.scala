@@ -608,7 +608,7 @@ object GenRandomVexriscv extends App {
   val rvcRate = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_RVC_RATE", "0.5").toDouble
   val linuxRate = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_LINUX_RATE", "0").toDouble
   val machineOsRate = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_MACHINE_OS_RATE", "0.5").toDouble
-  val secureRate = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_SECURE_RATE", "0.2").toDouble
+  val secureRate = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_SECURE_RATE", "0").toDouble
   val linuxRegression = sys.env.getOrElse("VEXRISCV_REGRESSION_LINUX_REGRESSION", "no")
   val coremarkRegression = sys.env.getOrElse("VEXRISCV_REGRESSION_COREMARK", "yes")
   val zephyrCount = sys.env.getOrElse("VEXRISCV_REGRESSION_ZEPHYR_COUNT", "4")
@@ -639,7 +639,8 @@ object GenRandomVexriscv extends App {
 
     val noMemory = universes.contains(VexRiscvUniverse.NO_MEMORY)
     val noWriteback = universes.contains(VexRiscvUniverse.NO_WRITEBACK)
-
+    val name = (if(noMemory) "noMemoryStage_" else "") + (if(noWriteback) "noWritebackStage_" else "") + positionsToApply.map(d => d.dimension.name + "_" + d.name).mkString("_")
+    println(s"Configuration=$name")
     //Generate RTL
     SpinalVerilog({
         val config = VexRiscvConfig(
@@ -698,7 +699,4 @@ object GenRandomVexriscv extends App {
   }while(!positions.forall(_.isCompatibleWith(positions)))
 
   doGen(positions, universe)
-  for(pos <- positions){
-    println(pos, pos.name)
-  }
 }
