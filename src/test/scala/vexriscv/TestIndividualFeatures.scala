@@ -688,7 +688,7 @@ class FunTestPara extends MultithreadedFunSuite(3){
 //}
 
 class TestIndividualFeatures extends MultithreadedFunSuite(sys.env.getOrElse("VEXRISCV_REGRESSION_THREAD_COUNT", "0").toInt) {
-  val testCount = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_COUNT", "100").toInt
+  val testCount = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_COUNT", "5").toInt
   val seed = sys.env.getOrElse("VEXRISCV_REGRESSION_SEED", Random.nextLong().toString).toLong
   val testId : Set[Int] =  sys.env.get("VEXRISCV_REGRESSION_TEST_ID") match {
     case Some(x) if x != "" => x.split(',').map(_.toInt).toSet

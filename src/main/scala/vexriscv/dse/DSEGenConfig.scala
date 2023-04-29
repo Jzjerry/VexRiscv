@@ -444,7 +444,6 @@ object GenDSEVexRiscvFromConfig extends App {
       })
     }
 
-  
   val configFile = Source.fromFile("DSEConfig.json")
   val configJSON = JSON.parseFull(configFile.mkString).get.asInstanceOf[Map[String, Any]]
 
