@@ -1,7 +1,8 @@
 RTL = VexRiscv.v
 SCALA_SRC = src/main/scala/vexriscv/dse/DSEGenConfig.scala
 # SBT_RUN = "runMain vexriscv.dse.DSEGenVexriscv"
-SBT_RUN = "runMain vexriscv.dse.GenRandomVexriscv"
+SBT_RUN = "runMain vexriscv.dse.GenDSEVexRiscvFromConfig"
+JSON = DSEConfig.json
 
 LOG_PATH = ../log
 
@@ -10,7 +11,7 @@ LOG_PATH = ../log
 
 all: clean ${RTL}
 
-${RTL}: ${SCALA_SRC}
+${RTL}: ${JSON}
 	sbt ${SBT_RUN}
 
 clean: 

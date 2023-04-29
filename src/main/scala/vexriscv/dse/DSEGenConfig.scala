@@ -297,6 +297,123 @@ class MulDivSpace extends MulDivDimension with DSE{
 
 }
 
+case class IBusConfig(
+  ibusConfig : Map[String, Any]
+) extends DSEConfig
+
+class IBusSpace extends IBusDimension(rvcRate = 0.5) with DSE{
+    
+  override def getDimension: ConfigDimension[_] = this
+
+  override def configureImpl(universes: Seq[ConfigUniverse], config : DSEConfig) : VexRiscvPosition = {
+
+    val spconfig = config.asInstanceOf[IBusConfig]
+    val ibusConfig = spconfig.ibusConfig
+    val compressed = ibusConfig("compressed").asInstanceOf[Boolean]
+
+    val prediction = ibusConfig("prediction") match {
+      case "None" => NONE
+      case "Static" => STATIC
+      case "Dynamic" => DYNAMIC
+      case "DynamicTarget" => DYNAMIC_TARGET
+      case _ => {
+        throw new AssertionError(s"Prediction type ${ibusConfig("prediction")} not supported")
+        NONE
+      }
+    }
+
+    ibusConfig("busType") match {
+      case "Simple" => {
+        val latency = ibusConfig("latency").asInstanceOf[Double].toInt // 1 - 6
+        val injectorStage = ibusConfig("injectorStage").asInstanceOf[Boolean] || latency == 1
+        val cmdForkOnSecondStage = ibusConfig("cmdForkOnSecondStage").asInstanceOf[Boolean]
+        val cmdForkPersistence = ibusConfig("cmdForkPersistence").asInstanceOf[Boolean]
+        new VexRiscvPosition("Simple" + latency + (if(cmdForkOnSecondStage) "S2" else "") + (if(cmdForkPersistence) "P" else "")  + (if(injectorStage) "InjStage" else "") + (if(compressed) "Rvc" else "") + prediction.getClass.getTypeName().replace("$","")) with InstructionAnticipatedPosition{
+        override def testParam = "IBUS=SIMPLE" + (if(compressed) " COMPRESSED=yes" else "")
+        override def applyOn(config: VexRiscvConfig): Unit = config.plugins += new IBusSimplePlugin(
+          resetVector = 0x80000000l,
+          cmdForkOnSecondStage = cmdForkOnSecondStage,
+          cmdForkPersistence = cmdForkPersistence,
+          prediction = prediction,
+          catchAccessFault = false, // catchAll default false
+          compressedGen = compressed,
+          busLatencyMin = latency,
+          injectorStage = injectorStage,
+          memoryTranslatorPortConfig = null // mmuPort default null
+        )
+        override def instructionAnticipatedOk() = injectorStage
+      }
+      }
+      case "Cached" => {
+        val asyncTagMemory = ibusConfig("asyncTagMemory").asInstanceOf[Boolean]
+        val mmuConfig = null
+
+        val catchAll = false
+        val tighlyCoupled = ibusConfig("tighlyCoupled").asInstanceOf[Boolean] && !catchAll
+        val reducedBankWidth = ibusConfig("reducedBankWidth").asInstanceOf[Boolean]
+        val relaxedPcCalculation = ibusConfig("relaxedPcCalculation").asInstanceOf[Boolean]
+        val twoCycleCache = ibusConfig("twoCycleCache").asInstanceOf[Boolean]
+        val injectorStage = ibusConfig("injectorStage").asInstanceOf[Boolean]
+        val twoCycleRam = ibusConfig("twoCycleRam").asInstanceOf[Boolean] && twoCycleCache
+        val twoCycleRamInnerMux = ibusConfig("twoCycleRamInnerMux").asInstanceOf[Boolean] && twoCycleRam
+        val memDataWidth = ibusConfig("memDataWidth").asInstanceOf[Double].toInt  // 32,64,128
+        val bytePerLine = Math.max(memDataWidth/8, ibusConfig("bytePerLine").asInstanceOf[Double].toInt) // 8,16,32,64
+        val cacheSize = ibusConfig("cacheSize").asInstanceOf[Double].toInt // 512,1024,2048,4096,8192
+        val wayCount = ibusConfig("wayCount").asInstanceOf[Double].toInt  // 1,2,4,8
+        if(cacheSize/wayCount < 512 || (catchAll && cacheSize/  wayCount > 4096)){
+          throw new AssertionError(s"Cache size ${cacheSize} / way count ${wayCount} not matched")
+        }
+
+        new VexRiscvPosition(s"Cached${memDataWidth}d" + (if  (twoCycleCache) "2cc" else "") + (if(injectorStage) "Injstage"  else "") + (if(twoCycleRam) "2cr" else "")  + "S" + cacheSize +  "W" + wayCount + "BPL" + bytePerLine + (if(relaxedPcCalculation)   "Relax" else "") + (if(compressed) "Rvc" else "") + prediction. getClass.getTypeName().replace("$","")+ (if(tighlyCoupled)"Tc"   else "") + (if(asyncTagMemory) "Atm" else "")) with   InstructionAnticipatedPosition{
+          override def testParam = s"IBUS=CACHED  IBUS_DATA_WIDTH=$memDataWidth" + (if(compressed) "   COMPRESSED=yes" else "") + (if(tighlyCoupled)" IBUS_TC=yes"   else "")
+          override def applyOn(config: VexRiscvConfig): Unit = {
+            val p = new IBusCachedPlugin(
+              resetVector = 0x80000000l,
+              compressedGen = compressed,
+              prediction = prediction,
+              relaxedPcCalculation = relaxedPcCalculation,
+              injectorStage = injectorStage,
+              memoryTranslatorPortConfig = mmuConfig,
+              config = InstructionCacheConfig(
+                cacheSize = cacheSize,
+                bytePerLine = bytePerLine,
+                wayCount = wayCount,
+                addressWidth = 32,
+                cpuDataWidth = 32,
+                memDataWidth = memDataWidth,
+                catchIllegalAccess = catchAll,
+                catchAccessFault = catchAll,
+                asyncTagMemory = asyncTagMemory,
+                twoCycleRam = twoCycleRam,
+                twoCycleCache = twoCycleCache,
+                twoCycleRamInnerMux = twoCycleRamInnerMux,
+                reducedBankWidth = reducedBankWidth
+              )
+            )
+            if(tighlyCoupled) p.newTightlyCoupledPort (TightlyCoupledPortParameter("iBusTc", a => a(30 downto 28)  === 0x0))
+            config.plugins += p
+          }
+          override def instructionAnticipatedOk() = !twoCycleCache ||   ((!twoCycleRam || wayCount == 1) && !compressed)
+        }
+      }
+      case _ => AssertionPostion
+    }
+  }
+}
+
+case class DBusConfig(
+  dbusConfig : Map[String, Any]
+) extends DSEConfig
+
+class DBusSpace extends DBusDimension with DSE{
+
+  override def getDimension: ConfigDimension[_] = this
+
+  override def configureImpl(universes: Seq[ConfigUniverse], config: DSEConfig): VexRiscvPosition = {
+    AssertionPostion //TODO
+  }
+}
+
 object GenDSEVexRiscvFromConfig extends App {
 
   def doGen(positionsToApply : List[VexRiscvPosition], universes : mutable.HashSet[VexRiscvUniverse]): Unit ={
@@ -311,14 +428,6 @@ object GenDSEVexRiscvFromConfig extends App {
           withMemoryStage = !noMemory,
           withWriteBackStage = !noWriteback,
           plugins = List(
-            new IBusSimplePlugin(
-              resetVector = 0x80000000l,
-              cmdForkOnSecondStage = false,
-              cmdForkPersistence = false,
-              prediction = NONE,
-              catchAccessFault = false,
-              compressedGen = false
-            ),
             new DBusSimplePlugin(
               catchAddressMisaligned = false,
               catchAccessFault = false,
@@ -358,6 +467,9 @@ object GenDSEVexRiscvFromConfig extends App {
       ),
     new MulDivSpace -> new MulDivConfig(
       configJSON("MulDiv").asInstanceOf[Map[String, Any]]
+      ),
+    new IBusSpace -> new IBusConfig(
+      configJSON("IBus").asInstanceOf[Map[String, Any]]
       )
   )
 
