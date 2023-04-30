@@ -10,7 +10,7 @@ LOG_PATH = ../log
 # ${RTL}: ${SCALA_FILE}
 # 	sbt ${SBT_RUN}
 
-all: clean ${RTL}
+all: test ${RTL}
 
 ${RTL}: ${JSON}
 	sbt ${SBT_RUN}

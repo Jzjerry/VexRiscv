@@ -410,7 +410,86 @@ class DBusSpace extends DBusDimension with DSE{
   override def getDimension: ConfigDimension[_] = this
 
   override def configureImpl(universes: Seq[ConfigUniverse], config: DSEConfig): VexRiscvPosition = {
-    AssertionPostion //TODO
+    val catchAll = false
+    val noMemory = universes.contains(VexRiscvUniverse.NO_MEMORY)
+    val noWriteBack = universes.contains(VexRiscvUniverse.NO_WRITEBACK)
+    val spconfig = config.asInstanceOf[DBusConfig]
+    val dbusConfig = spconfig.dbusConfig
+
+    dbusConfig("busType") match {
+      case "Simple" => {
+        val withLrSc = catchAll
+        val earlyInjection = dbusConfig("earlyInjection").asInstanceOf[Boolean] && 
+          !universes.contains(VexRiscvUniverse.NO_WRITEBACK)
+        new VexRiscvPosition("Simple" + (if(earlyInjection) "Early" else "Late")) {
+          override def testParam = "DBUS=SIMPLE " + (if(withLrSc) "LRSC=yes " else "")
+          override def applyOn(config: VexRiscvConfig): Unit = config.plugins += new DBusSimplePlugin(
+          catchAddressMisaligned = catchAll,
+          catchAccessFault = catchAll,
+          earlyInjection = earlyInjection,
+          memoryTranslatorPortConfig = null,  // default no mmu
+          withLrSc = withLrSc
+          )
+        }
+      }
+      case "Cached" => {
+        if(noMemory) { 
+          throw new AssertionError("Cached DBus require memory stage")  
+        }
+        val mmuConfig = null
+        val memDataWidth = dbusConfig("memDataWidth").asInstanceOf[Double].toInt // (32,64,128)
+        val cpuDataWidth = dbusConfig("cpuDataWidth").asInstanceOf[Double].toInt // (32,64,128).filter(_ <= memDataWidth)
+        if(cpuDataWidth > memDataWidth) throw new AssertionError(s"cpuDataWidth $cpuDataWidth > memDataWidth $memDataWidth")
+        val bytePerLine = Math.max(memDataWidth/8, dbusConfig("bytePerLine").asInstanceOf[Double].toInt) // (8,16,32,64)
+        val withLrSc = true
+        val withSmp = false //withLrSc && r.nextBoolean()
+        val withAmo = false // catchAll && r.nextBoolean() || withSmp
+        val relaxedMemoryTranslationRegister = dbusConfig("relaxedRegister").asInstanceOf[Boolean]
+        val earlyWaysHits = dbusConfig("earlyWaysHits").asInstanceOf[Boolean] && !noWriteBack
+        val directTlbHit = false 
+        val dBusCmdMasterPipe, dBusCmdSlavePipe, dBusRspSlavePipe = false //As it create test   bench issues
+        val asyncTagMemory = dbusConfig("asyncTagMemory").asInstanceOf[Boolean]
+
+        val cacheSize = dbusConfig("cacheSize").asInstanceOf[Double].toInt // (512, 1024, 2048, 4096, 8192)
+        val wayCount = dbusConfig("wayCount").asInstanceOf[Double].toInt  // (1, 2, 4, 8)
+        if(cacheSize/wayCount < 512 || (catchAll && cacheSize/wayCount >  4096)){
+          throw new AssertionError(s"cacheSize $cacheSize / wayCount $wayCount is not supported")
+        }
+
+        new VexRiscvPosition(s"Cached${memDataWidth}d${cpuDataWidth}c" + "S"  + cacheSize + "W" + wayCount + "BPL" + bytePerLine + (if (dBusCmdMasterPipe) "Cmp " else "") + (if(dBusCmdSlavePipe) "Csp "   else "") + (if(dBusRspSlavePipe) "Rsp " else "") + (if  (relaxedMemoryTranslationRegister) "Rmtr " else "") + (if (earlyWaysHits) "Ewh " else "") + (if(withAmo) "Amo " else "") + (if (withSmp) "Smp " else "") + (if(directTlbHit) "Dtlb " else "") + (if (false) "Tsmmu " else "") + (if(asyncTagMemory) "Atm" else   "")) {
+          override def testParam = s"DBUS=CACHED  DBUS_LOAD_DATA_WIDTH=$memDataWidth   DBUS_STORE_DATA_WIDTH=$cpuDataWidth " + (if(withLrSc) "LRSC=yes "   else "")  + (if(withAmo) "AMO=yes " else "")  + (if(withSmp)  "DBUS_EXCLUSIVE=yes DBUS_INVALIDATE=yes " else "")
+
+          override def applyOn(config: VexRiscvConfig): Unit = {
+            config.plugins += new DBusCachedPlugin(
+              config = new DataCacheConfig(
+                cacheSize = cacheSize,
+                bytePerLine = bytePerLine,
+                wayCount = wayCount,
+                addressWidth = 32,
+                cpuDataWidth = cpuDataWidth, //Not tested
+                memDataWidth = memDataWidth,
+                catchAccessError = catchAll,
+                catchIllegal = catchAll,
+                catchUnaligned = catchAll,
+                withLrSc = withLrSc,
+                withAmo = withAmo,
+                earlyWaysHits = earlyWaysHits,
+                withExclusive = withSmp,
+                withInvalidate = withSmp,
+                directTlbHit = directTlbHit,
+                asyncTagMemory = asyncTagMemory
+              ),
+              dBusCmdMasterPipe = dBusCmdMasterPipe,
+              dBusCmdSlavePipe = dBusCmdSlavePipe,
+              dBusRspSlavePipe = dBusRspSlavePipe,
+              relaxedMemoryTranslationRegister =  relaxedMemoryTranslationRegister,
+              memoryTranslatorPortConfig = mmuConfig
+            )
+          }
+        }
+      }
+      case _ => AssertionPostion
+    }
   }
 }
 
@@ -428,13 +507,11 @@ object GenDSEVexRiscvFromConfig extends App {
           withMemoryStage = !noMemory,
           withWriteBackStage = !noWriteback,
           plugins = List(
-            new DBusSimplePlugin(
-              catchAddressMisaligned = false,
-              catchAccessFault = false,
-              earlyInjection = false
-            ),
             new DecoderSimplePlugin(
               catchIllegalInstruction = false
+            ),
+            new StaticMemoryTranslatorPlugin(
+              ioRange = _ (31 downto 28) === 0xF
             ),
             new IntAluPlugin,
             new YamlPlugin("cpu0.yaml"))
@@ -469,6 +546,9 @@ object GenDSEVexRiscvFromConfig extends App {
       ),
     new IBusSpace -> new IBusConfig(
       configJSON("IBus").asInstanceOf[Map[String, Any]]
+      ),
+    new DBusSpace -> new DBusConfig(
+      configJSON("DBus").asInstanceOf[Map[String, Any]]
       )
   )
 

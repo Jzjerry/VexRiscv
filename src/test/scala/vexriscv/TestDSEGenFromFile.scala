@@ -74,13 +74,14 @@ class TestDSEGenFromFile extends MultithreadedFunSuite(sys.env.getOrElse("VEXRIS
               withMemoryStage = !noMemory,
               withWriteBackStage = !noWriteback,
               plugins = List(
-                new DBusSimplePlugin(
-                  catchAddressMisaligned = false,
-                  catchAccessFault = false,
-                  earlyInjection = false
-                ),
                 new DecoderSimplePlugin(
                   catchIllegalInstruction = false
+                ),
+                new CsrPlugin(
+                  CsrPluginConfig.all(0x80000020l).noExceptionButEcall
+                ),
+                new StaticMemoryTranslatorPlugin(
+                  ioRange = _ (31 downto 28) === 0xF
                 ),
                 new IntAluPlugin,
                 new YamlPlugin("cpu0.yaml"))
@@ -96,7 +97,7 @@ class TestDSEGenFromFile extends MultithreadedFunSuite(sys.env.getOrElse("VEXRIS
       //Test RTL
       val debug = true
       val stdCmd = (s"make run REGRESSION_PATH=../../src/test/cpp/regression VEXRISCV_FILE=VexRiscv.v WITH_USER_IO=no REDO=10 TRACE=${if(debug) "yes" else "no"} TRACE_START=100000000000ll FLOW_INFO=no STOP_ON_ERROR=$stopOnError DHRYSTONE=yes COREMARK=${coremarkRegression} THREAD_COUNT=1 ") + s" SEED=${testSeed} "
-      val default = " MMU=no PMP=no " + "DEBUG_PLUGIN=no " + "CSR=no " + "DBUS=SIMPLE "
+      val default = " MMU=no PMP=no " + "DEBUG_PLUGIN=no " + s"CSR=yes CSR_SKIP_TEST=yes FREERTOS=0 ZEPHYR=4"
       val testCmd = stdCmd + (positionsToApply).map(_.testParam).mkString(" ") + default
       println(testCmd)
       val str = doCmd(testCmd)
@@ -140,6 +141,9 @@ class TestDSEGenFromFile extends MultithreadedFunSuite(sys.env.getOrElse("VEXRIS
       ),
     new IBusSpace -> new IBusConfig(
       configJSON("IBus").asInstanceOf[Map[String, Any]]
+      ),
+    new DBusSpace -> new DBusConfig(
+      configJSON("DBus").asInstanceOf[Map[String, Any]]
       )
   )
 
