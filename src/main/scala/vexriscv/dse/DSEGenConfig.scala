@@ -359,7 +359,7 @@ class IBusSpace extends IBusDimension(rvcRate = 0.5) with DSE{
         val memDataWidth = ibusConfig("memDataWidth").asInstanceOf[Double].toInt  // 32,64,128
         val bytePerLine = Math.max(memDataWidth/8, ibusConfig("bytePerLine").asInstanceOf[Double].toInt) // 8,16,32,64
         val cacheSize = ibusConfig("cacheSize").asInstanceOf[Double].toInt // 512,1024,2048,4096,8192
-        val wayCount = ibusConfig("wayCount").asInstanceOf[Double].toInt  // 1,2,4,8
+        val wayCount = ibusConfig("wayCount").asInstanceOf[Double].toInt  // 1,2,4
         if(cacheSize/wayCount < 512 || (catchAll && cacheSize/  wayCount > 4096)){
           throw new AssertionError(s"Cache size ${cacheSize} / way count ${wayCount} not matched")
         }
@@ -564,9 +564,15 @@ object GenDSEVexRiscvFromConfig extends App {
 
   var positions : List[VexRiscvPosition] = null
 
-  do{
-    positions = spaces.map( d => d._1.configure(universe.toList, d._2))
-  }while(!positions.forall(_.isCompatibleWith(positions)))
-
+  if(sys.env.getOrElse("DSE_RANDOM", "false").toBoolean){
+    val rand = new Random(42)
+    do{
+      positions = spaces.map(d => d._1.randomPosition(universe.toList, rand))
+    }while(!positions.forall(_.isCompatibleWith(positions)))
+  }else{
+    do{
+      positions = spaces.map( d => d._1.configure(universe.toList, d._2))
+    }while(!positions.forall(_.isCompatibleWith(positions)))
+  }
   doGen(positions, universe)
 }
