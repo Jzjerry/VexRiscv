@@ -104,6 +104,11 @@ class RegFileSpace extends RegFileDimension with DSE{
           zeroBoot = true,
           readInExecute = executeRf
         )
+
+        override def isCompatibleWith(positions: Seq[ConfigPosition[VexRiscvConfig]]) = executeRf || positions.exists{
+          case p : InstructionAnticipatedPosition => p.instructionAnticipatedOk()
+          case _ => false
+        }
       }
     }
   }
@@ -570,9 +575,9 @@ object GenDSEVexRiscvFromConfig extends App {
       positions = spaces.map(d => d._1.randomPosition(universe.toList, rand))
     }while(!positions.forall(_.isCompatibleWith(positions)))
   }else{
-    do{
-      positions = spaces.map( d => d._1.configure(universe.toList, d._2))
-    }while(!positions.forall(_.isCompatibleWith(positions)))
-  }
+    positions = spaces.map( d => d._1.configure(universe.toList, d._2))
+    if(!positions.forall(_.isCompatibleWith(positions)))
+      throw new AssertionError("Positions are incompatible!")
+    }
   doGen(positions, universe)
 }
