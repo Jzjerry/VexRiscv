@@ -159,9 +159,11 @@ class TestDSEGenFromFile extends MultithreadedFunSuite(sys.env.getOrElse("VEXRIS
 
   var positions : List[dse.VexRiscvPosition] = null
 
-  do{
-    positions = spaces.map( d => d._1.configure(universe.toList, d._2))
-  }while(!positions.forall(_.isCompatibleWith(positions)))
+  positions = spaces.map( d => d._1.configure(universe.toList, d._2))
+
+  if(!positions.forall(_.isCompatibleWith(positions))){
+    throw new AssertionError("Positions are incompatible!")
+  }
 
   doTest(positions,"DSE",0 , universe)
 
