@@ -507,7 +507,9 @@ object GenDSEVexRiscvFromConfig extends App {
     val name = (if(noMemory) "noMemoryStage_" else "") + (if(noWriteback) "noWritebackStage_" else "") + positionsToApply.map(d => d.dimension.name + "_" + d.name).mkString("_")
     println(s"Configuration=$name")
     //Generate RTL
-    SpinalVerilog({
+    SpinalConfig()
+    .addStandardMemBlackboxing(blackboxAllWhatsYouCan)
+    .generateVerilog({
         val config = VexRiscvConfig(
           withMemoryStage = !noMemory,
           withWriteBackStage = !noWriteback,

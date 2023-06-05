@@ -3331,6 +3331,36 @@ public:
 	}
 };
 
+class TFLite : public WorkspaceRegression{
+public:
+	string hexName;
+	TFLite(string name,string hexName) : WorkspaceRegression(name) {
+		setIStall(false);
+		setDStall(false);
+		withRiscvRef();
+		loadHex(string(REGRESSION_PATH) + "../../resources/hex/tflite/" + hexName + ".hex");
+		this->hexName = hexName;
+	}
+
+	virtual void checks(){
+		static size_t count = 0;
+		if(top->VexRiscv->lastStagePc == 0x8000000c) count++;
+
+		if(top->VexRiscv->lastStagePc == 0x8000000c && count == 2){
+			if(top->VexRiscv->RegFilePlugin_regFile[10] == 0)
+				pass();
+			else
+				fail();
+		}
+	}
+
+	virtual void pass(){
+		cout << "TFLite Regression("<< this->hexName <<") Passed in "<< instanceCycles << " cycles" << endl;
+		Workspace::pass();
+	}
+};
+
+
 class Compliance : public WorkspaceRegression{
 public:
 	string name;
@@ -4163,6 +4193,31 @@ int main(int argc, char **argv, char **env) {
 	printf("BOOT\n");
 	timespec startedAt = timer_start();
 
+	#if defined(MUL) && defined(DIV)
+		#if defined(COMPRESSED)
+			TFLite("tflite","tflite_AD_rv32imc").run(2e9);
+    	#else
+			TFLite("tflite","tflite_AD_rv32im").run(2e9);
+		#endif
+	#else
+		#if defined(COMPRESSED)
+			TFLite("tflite","tflite_AD_rv32ic").run(2e9);
+    	#else
+			TFLite("tflite","tflite_AD_rv32i").run(2e9);
+		#endif
+	#endif
+
+	#ifdef TFLITE_ONLY
+		uint64_t TFLite_time = timer_end(startedAt);
+		cout << endl << "****************************************************************" << endl;
+		cout << "Had simulate " << Workspace::cycles << " clock cycles in " << TFLite_time*1e-9 << " s (" << Workspace::cycles / 	(TFLite_time*1e-6) << " Khz)" << endl;
+		if(Workspace::successCounter == Workspace::testsCounter)
+			cout << "REGRESSION SUCCESS " << Workspace::successCounter << "/" << Workspace::testsCounter << endl;
+		else
+			cout<< "REGRESSION FAILURE " << Workspace::testsCounter - Workspace::successCounter << "/"  << Workspace::testsCounter << endl;
+		cout << "****************************************************************" << endl << endl;
+		exit(0);
+	#endif
 
 #ifdef LINUX_SOC_SMP
     {
