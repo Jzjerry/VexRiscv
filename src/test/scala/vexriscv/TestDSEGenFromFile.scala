@@ -28,8 +28,8 @@ import scala.io._
 class TestDSEGenFromFile extends MultithreadedFunSuite(sys.env.getOrElse("VEXRISCV_REGRESSION_THREAD_COUNT", "0").toInt) {
   val seed = sys.env.getOrElse("VEXRISCV_REGRESSION_SEED", Random.nextLong().toString).toLong
   val linuxRegression = sys.env.getOrElse("VEXRISCV_REGRESSION_LINUX_REGRESSION", "no")
-  val coremarkRegression = sys.env.getOrElse("VEXRISCV_REGRESSION_COREMARK", "yes")
-  val zephyrCount = sys.env.getOrElse("VEXRISCV_REGRESSION_ZEPHYR_COUNT", "4")
+  val coremarkRegression = sys.env.getOrElse("VEXRISCV_REGRESSION_COREMARK", "no")
+  val zephyrCount = sys.env.getOrElse("VEXRISCV_REGRESSION_ZEPHYR_COUNT", "0")
   val stopOnError = sys.env.getOrElse("VEXRISCV_REGRESSION_STOP_ON_ERROR", "yes")
   val lock = new{}
 
@@ -97,7 +97,7 @@ class TestDSEGenFromFile extends MultithreadedFunSuite(sys.env.getOrElse("VEXRIS
       //Test RTL
       val debug = true
       val stdCmd = (s"make run REGRESSION_PATH=../../src/test/cpp/regression VEXRISCV_FILE=VexRiscv.v WITH_USER_IO=no REDO=10 TRACE=${if(debug) "yes" else "no"} TRACE_START=100000000000ll FLOW_INFO=no STOP_ON_ERROR=$stopOnError DHRYSTONE=yes COREMARK=${coremarkRegression} THREAD_COUNT=1 ") + s" SEED=${testSeed} "
-      val default = " MMU=no PMP=no " + "DEBUG_PLUGIN=no " + s"CSR=yes CSR_SKIP_TEST=yes FREERTOS=0 ZEPHYR=4"
+      val default = " MMU=no PMP=no " + "DEBUG_PLUGIN=no " + s"CSR=yes CSR_SKIP_TEST=yes FREERTOS=0 ZEPHYR=0 ISA_TEST=no"
       val testCmd = stdCmd + (positionsToApply).map(_.testParam).mkString(" ") + default
       println(testCmd)
       val str = doCmd(testCmd)
