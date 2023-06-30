@@ -3344,9 +3344,16 @@ public:
 
 	virtual void checks(){
 		static size_t count = 0;
-		if(top->VexRiscv->lastStagePc == 0x8000000c) count++;
 
-		if(top->VexRiscv->lastStagePc == 0x8000000c && count == 2){
+		#ifdef COMPRESSED
+		uint64_t terminal_addr = 0x8000000a;
+		#else
+		uint64_t terminal_addr = 0x8000000c;
+		#endif
+
+		if(top->VexRiscv->lastStagePc == terminal_addr) count++;
+
+		if(top->VexRiscv->lastStagePc == terminal_addr && count > 1){
 			if(top->VexRiscv->RegFilePlugin_regFile[10] == 0)
 				pass();
 			else
@@ -4192,7 +4199,8 @@ int main(int argc, char **argv, char **env) {
 
 	printf("BOOT\n");
 	timespec startedAt = timer_start();
-
+	
+	#ifdef TFLITE_ONLY
 	#if defined(MUL) && defined(DIV)
 		#if defined(COMPRESSED)
 			TFLite("tflite","tflite_AD_rv32imc").run(2e9);
@@ -4206,8 +4214,6 @@ int main(int argc, char **argv, char **env) {
 			TFLite("tflite","tflite_AD_rv32i").run(2e9);
 		#endif
 	#endif
-
-	#ifdef TFLITE_ONLY
 		uint64_t TFLite_time = timer_end(startedAt);
 		cout << endl << "****************************************************************" << endl;
 		cout << "Had simulate " << Workspace::cycles << " clock cycles in " << TFLite_time*1e-9 << " s (" << Workspace::cycles / 	(TFLite_time*1e-6) << " Khz)" << endl;
