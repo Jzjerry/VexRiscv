@@ -4199,19 +4199,19 @@ int main(int argc, char **argv, char **env) {
 
 	printf("BOOT\n");
 	timespec startedAt = timer_start();
-	
+	const string model = "VWW";
 	#ifdef TFLITE_ONLY
 	#if defined(MUL) && defined(DIV)
 		#if defined(COMPRESSED)
-			TFLite("tflite","tflite_AD_rv32imc").run(2e9);
+			TFLite("tflite","tflite_" + model + "_rv32imc").run(8e9);
     	#else
-			TFLite("tflite","tflite_AD_rv32im").run(2e9);
+			TFLite("tflite","tflite_" + model + "_rv32im").run(8e9);
 		#endif
 	#else
 		#if defined(COMPRESSED)
-			TFLite("tflite","tflite_AD_rv32ic").run(2e9);
+			TFLite("tflite","tflite_" + model + "_rv32ic").run(8e9);
     	#else
-			TFLite("tflite","tflite_AD_rv32i").run(2e9);
+			TFLite("tflite","tflite_" + model + "_rv32i").run(8e9);
 		#endif
 	#endif
 		uint64_t TFLite_time = timer_end(startedAt);
