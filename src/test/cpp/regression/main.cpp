@@ -3353,7 +3353,7 @@ public:
 
 		if(top->VexRiscv->lastStagePc == terminal_addr) count++;
 
-		if(top->VexRiscv->lastStagePc == terminal_addr && count > 1){
+		if(top->VexRiscv->lastStagePc == terminal_addr && count > 3){
 			if(top->VexRiscv->RegFilePlugin_regFile[10] == 0)
 				pass();
 			else
