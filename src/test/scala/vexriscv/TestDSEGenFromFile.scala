@@ -97,8 +97,8 @@ class TestDSEGenFromFile extends MultithreadedFunSuite(sys.env.getOrElse("VEXRIS
       files.foreach(f => FileUtils.copyFileToDirectory(new File(s"src/test/cpp/regression/$f"), new File(project)))
 
       //Test RTL
-      val debug = true
-      val stdCmd = (s"make run REGRESSION_PATH=../../src/test/cpp/regression VEXRISCV_FILE=VexRiscv.v WITH_USER_IO=no REDO=10 TRACE=${if(debug) "yes" else "no"} TRACE_START=100000000000ll FLOW_INFO=no STOP_ON_ERROR=$stopOnError DHRYSTONE=yes COREMARK=${coremarkRegression} THREAD_COUNT=1 ") + s" SEED=${testSeed} " + s" TFLITE_ONLY=${useTFLite} " 
+      val debug = false
+      val stdCmd = (s"make run REGRESSION_PATH=../../src/test/cpp/regression VEXRISCV_FILE=VexRiscv.v WITH_USER_IO=no REDO=10 TRACE=${if(debug) "yes" else "no"} TRACE_START=100000000000ll FLOW_INFO=no STOP_ON_ERROR=$stopOnError DHRYSTONE=yes COREMARK=${coremarkRegression} ") + s" SEED=${testSeed} " + s" TFLITE_ONLY=${useTFLite} " 
       val default = " MMU=no PMP=no " + "DEBUG_PLUGIN=no " + s"CSR=yes CSR_SKIP_TEST=yes FREERTOS=0 ZEPHYR=0 ISA_TEST=no"
       val testCmd = stdCmd + (positionsToApply).map(_.testParam).mkString(" ") + default
       println(testCmd)
