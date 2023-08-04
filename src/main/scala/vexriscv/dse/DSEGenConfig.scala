@@ -228,10 +228,7 @@ class MulDivSpace extends MulDivDimension with DSE{
     val noWriteBack = universes.contains(VexRiscvUniverse.NO_WRITEBACK)
 
     if(hasMulDiv){
-      val mulUnroll = spconfig.muldivConfig("MulUnroll").asInstanceOf[Double].toInt
       val divUnroll = spconfig.muldivConfig("DivUnroll").asInstanceOf[Double].toInt
-      val buffIn = spconfig.muldivConfig("BuffIn").asInstanceOf[Boolean]
-      val buffOut = spconfig.muldivConfig("BuffOut").asInstanceOf[Boolean]
 
       spconfig.muldivConfig("MulType").asInstanceOf[String] match {
         case "Simple" => new VexRiscvPosition(s"MulSimple_Div$divUnroll") {
@@ -247,6 +244,7 @@ class MulDivSpace extends MulDivDimension with DSE{
           } 
         }
         case "Iterative" => if(!noMemory) {
+            val mulUnroll = spconfig.muldivConfig("MulUnroll").asInstanceOf[Double].toInt
             new VexRiscvPosition(s"Mul${mulUnroll}_Div${divUnroll}") {
             override def testParam = "MUL=yes DIV=yes"
             override def applyOn(config: VexRiscvConfig): Unit = {
@@ -259,20 +257,23 @@ class MulDivSpace extends MulDivDimension with DSE{
             }
           }
         } else AssertionPostion
-        case "Buffer" => if(!noMemory && !noWriteBack) 
-        new VexRiscvPosition(s"MulDivBuf$buffIn$buffOut"){
-          override def testParam = "MUL=yes DIV=yes"
-          override def applyOn(config: VexRiscvConfig): Unit = {
-            config.plugins += new MulPlugin(
-              inputBuffer = buffIn,
-              outputBuffer = buffOut
-            )
-            config.plugins += new MulDivIterativePlugin(
-              genMul = false,
-              genDiv = true,
-              mulUnrollFactor = 32,
-              divUnrollFactor = divUnroll
-            )
+        case "Buffer" => if(!noMemory && !noWriteBack){
+          val buffIn = spconfig.muldivConfig("BuffIn").asInstanceOf[Boolean]
+          val buffOut = spconfig.muldivConfig("BuffOut").asInstanceOf[Boolean] 
+          new VexRiscvPosition(s"MulDivBuf$buffIn$buffOut"){
+            override def testParam = "MUL=yes DIV=yes"
+            override def applyOn(config: VexRiscvConfig): Unit = {
+              config.plugins += new MulPlugin(
+                inputBuffer = buffIn,
+                outputBuffer = buffOut
+              )
+              config.plugins += new MulDivIterativePlugin(
+                genMul = false,
+                genDiv = true,
+                mulUnrollFactor = 32,
+                divUnrollFactor = divUnroll
+              )
+            }
           }
         } else AssertionPostion
         case "Mul16" => if(!noMemory && !noWriteBack)
