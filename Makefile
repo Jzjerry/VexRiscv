@@ -21,6 +21,7 @@ test: ${JSON}
 	sbt ${SBT_TEST}
 
 test-tflite: export VEXRISCV_USE_TFLITE_BENCHMARKS = yes
+test-tflite: export VEXRISCV_TFLITE_MODEL = ${TFLITE_BENCH}
 test-tflite: ${JSON}
 	sbt ${SBT_TEST}
 

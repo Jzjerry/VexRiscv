@@ -73,6 +73,9 @@ endif
 
 ifeq ($(TFLITE_ONLY),yes)
 	ADDCFLAGS += -CFLAGS -DTFLITE_ONLY
+	ifdef TFLITE_BENCH
+		ADDCFLAGS += -CFLAGS -DTFLITE_BENCH='\"$(TFLITE_BENCH)\"'
+	endif
 endif
 
 ifeq ($(CONCURRENT_OS_EXECUTIONS),yes)

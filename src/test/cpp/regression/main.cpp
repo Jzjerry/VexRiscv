@@ -4199,7 +4199,12 @@ int main(int argc, char **argv, char **env) {
 
 	printf("BOOT\n");
 	timespec startedAt = timer_start();
-	const string model = "RESNET";
+	#ifdef TFLITE_BENCH
+		const string model = TFLITE_BENCH;
+	#else
+		const string model = "AD";
+		printf("TFLITE_BENCH undefined, Use %s as default benchmark!\n", model.c_str());
+	#endif
 	#ifdef TFLITE_ONLY
 	#if defined(MUL) && defined(DIV)
 		#if defined(COMPRESSED)

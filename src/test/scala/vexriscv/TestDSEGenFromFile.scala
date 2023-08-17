@@ -33,6 +33,12 @@ class TestDSEGenFromFile extends MultithreadedFunSuite(sys.env.getOrElse("VEXRIS
   val zephyrCount = sys.env.getOrElse("VEXRISCV_REGRESSION_ZEPHYR_COUNT", "0")
   val stopOnError = sys.env.getOrElse("VEXRISCV_REGRESSION_STOP_ON_ERROR", "yes")
   val useTFLite = sys.env.getOrElse("VEXRISCV_USE_TFLITE_BENCHMARKS", "no")
+  val tfliteBench = sys.env.getOrElse("VEXRISCV_TFLITE_MODEL", "NONE")
+  if(tfliteBench == "NONE" && useTFLite == "yes"){
+    throw new AssertionError("No TFLITE_BENCH selected")
+  }
+  println(tfliteBench)
+
   val lock = new{}
 
 
@@ -100,7 +106,8 @@ class TestDSEGenFromFile extends MultithreadedFunSuite(sys.env.getOrElse("VEXRIS
       val debug = false
       val stdCmd = (s"make run REGRESSION_PATH=../../src/test/cpp/regression VEXRISCV_FILE=VexRiscv.v WITH_USER_IO=no REDO=10 TRACE=${if(debug) "yes" else "no"} TRACE_START=100000000000ll FLOW_INFO=no STOP_ON_ERROR=$stopOnError DHRYSTONE=yes COREMARK=${coremarkRegression} ") + s" SEED=${testSeed} " + s" TFLITE_ONLY=${useTFLite} " 
       val default = " MMU=no PMP=no " + "DEBUG_PLUGIN=no " + s"CSR=yes CSR_SKIP_TEST=yes FREERTOS=0 ZEPHYR=0 ISA_TEST=no"
-      val testCmd = stdCmd + (positionsToApply).map(_.testParam).mkString(" ") + default
+      val tfliteCmd = s" TFLITE_BENCH=${tfliteBench} "
+      val testCmd = stdCmd + (positionsToApply).map(_.testParam).mkString(" ") + default + tfliteCmd
       println(testCmd)
       val str = doCmd(testCmd)
       assert(str.contains("REGRESSION SUCCESS") && !str.contains("Broken pipe"))
