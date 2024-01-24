@@ -153,7 +153,7 @@ object MuraxConfig{
 }
 
 
-case class Murax(config : MuraxConfig) extends Component{
+case class Murax(config : MuraxConfig, cpuConfig: VexRiscvConfig = null) extends Component{
   import config._
 
   val io = new Bundle {
@@ -225,9 +225,15 @@ case class Murax(config : MuraxConfig) extends Component{
 
     //Instanciate the CPU
     val cpu = new VexRiscv(
-      config = VexRiscvConfig(
-        plugins = cpuPlugins += new DebugPlugin(debugClockDomain, hardwareBreakpointCount)
-      )
+      // config = VexRiscvConfig(
+      //   plugins = cpuPlugins += new DebugPlugin(debugClockDomain, hardwareBreakpointCount)
+      // )
+      config = if (cpuConfig == null){VexRiscvConfig(
+        plugins = cpuPlugins += new DebugPlugin(debugClockDomain, hardwareBreakpointCount))} 
+      else {
+        cpuConfig.plugins += new DebugPlugin(debugClockDomain, hardwareBreakpointCount)
+        cpuConfig
+      }
     )
 
     //Checkout plugins used to instanciate the CPU to connect them to the SoC

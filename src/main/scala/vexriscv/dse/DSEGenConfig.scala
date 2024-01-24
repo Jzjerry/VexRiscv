@@ -525,7 +525,12 @@ object GenDSEVexRiscvFromConfig extends App {
             new YamlPlugin("cpu0.yaml"))
         )
         for (positionToApply <- positionsToApply) positionToApply.applyOn(config)
+        // if Gen Bare VexRiscv CPU
         new VexRiscv(config)
+        
+        // if Gen Murax SoC
+        // import vexriscv.demo.{Murax, MuraxConfig}
+        // Murax(MuraxConfig.default, config)
       })
     }
 
