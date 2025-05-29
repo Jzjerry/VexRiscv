@@ -3330,6 +3330,43 @@ public:
 	}
 };
 
+class TFLite : public WorkspaceRegression{
+public:
+	string hexName;
+	TFLite(string name,string hexName) : WorkspaceRegression(name) {
+		setIStall(false);
+		setDStall(false);
+		withRiscvRef();
+		loadHex(string(REGRESSION_PATH) + "../../resources/hex/tflite/" + hexName + ".hex");
+		this->hexName = hexName;
+	}
+
+	virtual void checks(){
+		static size_t count = 0;
+
+		#ifdef COMPRESSED
+		uint64_t terminal_addr = 0x8000000a;
+		#else
+		uint64_t terminal_addr = 0x8000000c;
+		#endif
+
+		if(top->VexRiscv->lastStagePc == terminal_addr) count++;
+
+		if(top->VexRiscv->lastStagePc == terminal_addr && count > 32){
+			if(top->VexRiscv->RegFilePlugin_regFile[10] == 0)
+				pass();
+			else
+				fail();
+		}
+	}
+
+	virtual void pass(){
+		cout << "TFLite Regression("<< this->hexName <<") Passed in "<< instanceCycles << " cycles" << endl;
+		Workspace::pass();
+	}
+};
+
+
 class Compliance : public WorkspaceRegression{
 public:
 	string name;
@@ -4161,7 +4198,36 @@ int main(int argc, char **argv, char **env) {
 
 	printf("BOOT\n");
 	timespec startedAt = timer_start();
-
+	#ifdef TFLITE_BENCH
+		const string model = TFLITE_BENCH;
+	#else
+		const string model = "AD";
+		printf("TFLITE_BENCH undefined, Use %s as default benchmark!\n", model.c_str());
+	#endif
+	#ifdef TFLITE_ONLY
+	#if defined(MUL) && defined(DIV)
+		#if defined(COMPRESSED)
+			TFLite("tflite","tflite_" + model + "_rv32imc").run(1e10);
+    	#else
+			TFLite("tflite","tflite_" + model + "_rv32im").run(1e10);
+		#endif
+	#else
+		#if defined(COMPRESSED)
+			TFLite("tflite","tflite_" + model + "_rv32ic").run(1e10);
+    	#else
+			TFLite("tflite","tflite_" + model + "_rv32i").run(1e10);
+		#endif
+	#endif
+		uint64_t TFLite_time = timer_end(startedAt);
+		cout << endl << "****************************************************************" << endl;
+		cout << "Had simulate " << Workspace::cycles << " clock cycles in " << TFLite_time*1e-9 << " s (" << Workspace::cycles / 	(TFLite_time*1e-6) << " Khz)" << endl;
+		if(Workspace::successCounter == Workspace::testsCounter)
+			cout << "REGRESSION SUCCESS " << Workspace::successCounter << "/" << Workspace::testsCounter << endl;
+		else
+			cout<< "REGRESSION FAILURE " << Workspace::testsCounter - Workspace::successCounter << "/"  << Workspace::testsCounter << endl;
+		cout << "****************************************************************" << endl << endl;
+		exit(0);
+	#endif
 
 #ifdef LINUX_SOC_SMP
     {
