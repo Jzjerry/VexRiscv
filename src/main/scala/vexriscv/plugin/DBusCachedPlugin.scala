@@ -6,6 +6,7 @@ import spinal.core._
 import spinal.lib._
 import spinal.lib.bus.amba4.axi.Axi4
 import spinal.lib.bus.misc.SizeMapping
+import spinal.lib.misc.HexTools
 
 import scala.collection.mutable.ArrayBuffer
 
@@ -64,6 +65,7 @@ class DBusCachedPlugin(val config : DataCacheConfig,
   var exceptionBus : Flow[ExceptionCause] = null
   var privilegeService : PrivilegeService = null
   var redoBranch : Flow[UInt] = null
+  var writesPending : Bool = null
 
   @dontName var dBusAccess : DBusAccess = null
   override def newDBusAccess(): DBusAccess = {
@@ -85,6 +87,12 @@ class DBusCachedPlugin(val config : DataCacheConfig,
 
   val tightlyCoupledPorts = ArrayBuffer[TightlyCoupledDataPort]()
   def tightlyGen = tightlyCoupledPorts.nonEmpty
+
+  def newTightlyCoupledPort(p: TightlyCoupledDataPortParameter) = {
+    val port = TightlyCoupledDataPort(p, null)
+    tightlyCoupledPorts += port
+    this
+  }
 
   def newTightlyCoupledPort(mapping : UInt => Bool) = {
     val port = TightlyCoupledDataPort(TightlyCoupledDataPortParameter(null, mapping), TightlyCoupledDataBus())
@@ -171,6 +179,9 @@ class DBusCachedPlugin(val config : DataCacheConfig,
   override def setup(pipeline: VexRiscv): Unit = {
     import Riscv._
     import pipeline.config._
+
+
+    tightlyCoupledPorts.filter(_.bus == null).foreach(p => p.bus = master(TightlyCoupledDataBus()).setName(p.p.name))
 
     dBus = master(DataCacheMemBus(this.config)).setName("dBus")
 
@@ -270,6 +281,7 @@ class DBusCachedPlugin(val config : DataCacheConfig,
         decoderService.add(FENCE, List(MEMORY_FENCE -> True))
         decoderService.addDefault(MEMORY_FENCE_WR, False)
         decoderService.add(FENCE_I, List(MEMORY_FENCE_WR -> True))
+        writesPending = Bool().setCompositeName(this, "writesPending")
       }
     }
 
@@ -412,6 +424,7 @@ class DBusCachedPlugin(val config : DataCacheConfig,
         when(arbitration.isValid && input(MEMORY_FENCE_WR) && cache.io.cpu.writesPending){
           arbitration.haltItself := True
         }
+        writesPending := cache.io.cpu.writesPending
       }
 
       if(tightlyGen){
@@ -460,7 +473,7 @@ class DBusCachedPlugin(val config : DataCacheConfig,
       cache.io.cpu.memory.mmuRsp.isIoAccess setWhen(pipeline(DEBUG_BYPASS_CACHE) && !cache.io.cpu.memory.isWrite)
 
       if(tightlyGen){
-        when(input(MEMORY_TIGHTLY).orR){
+        when(input(MEMORY_ENABLE) && input(MEMORY_TIGHTLY).orR){
           cache.io.cpu.memory.isValid := False
           input(HAS_SIDE_EFFECT) := False
         }
@@ -498,7 +511,7 @@ class DBusCachedPlugin(val config : DataCacheConfig,
         }
 
         when(!input(MEMORY_FENCE) || !arbitration.isFiring){
-          cache.io.cpu.writeBack.fence.clearAll()
+          cache.io.cpu.writeBack.fence.clearFlags()
         }
 
         when(arbitration.isValid && (input(MEMORY_FENCE) || aquire)){
@@ -572,7 +585,7 @@ class DBusCachedPlugin(val config : DataCacheConfig,
       insert(MEMORY_LOAD_DATA) := rspShifted
 
       if(tightlyGen){
-        when(input(MEMORY_TIGHTLY).orR){
+        when(input(MEMORY_ENABLE) && input(MEMORY_TIGHTLY).orR){
           cache.io.cpu.writeBack.isValid := False
           exceptionBus.valid := False
           redoBranch.valid := False
@@ -638,7 +651,12 @@ class DBusCachedPlugin(val config : DataCacheConfig,
 }
 
 
-class IBusDBusCachedTightlyCoupledRam(mapping : SizeMapping, withIBus : Boolean = true, withDBus : Boolean = true) extends Plugin[VexRiscv]{
+class IBusDBusCachedTightlyCoupledRam(mapping : SizeMapping,
+                                      withIBus : Boolean = true,
+                                      withDBus : Boolean = true,
+                                      ramAsBlackbox : Boolean = true,
+                                      hexInit :   String = null,
+                                      ramOffset : Long = -1) extends Plugin[VexRiscv]{
   var dbus : TightlyCoupledDataBus = null
   var ibus : TightlyCoupledBus = null
 
@@ -662,13 +680,18 @@ class IBusDBusCachedTightlyCoupledRam(mapping : SizeMapping, withIBus : Boolean 
   override def build(pipeline: VexRiscv) = {
     val logic = pipeline plug new Area {
       val ram = Mem(Bits(32 bits), mapping.size.toInt/4)
-      ram.generateAsBlackBox()
+      if(ramAsBlackbox) ram.generateAsBlackBox()
+      if (hexInit != null) {
+        assert(ramOffset != -1)
+        initRam(ram, hexInit, ramOffset, allowOverflow = true)
+      }
       val d = withDBus generate new Area {
         dbus.read_data := ram.readWriteSync(
           address = (dbus.address >> 2).resized,
           data    = dbus.write_data,
           enable  = dbus.enable,
-          write   = dbus.write_enable
+          write   = dbus.write_enable,
+          mask    = dbus.write_mask
         )
       }
       val i = withIBus generate new Area {
@@ -680,5 +703,21 @@ class IBusDBusCachedTightlyCoupledRam(mapping : SizeMapping, withIBus : Boolean 
         )
       }
     }
+  }
+
+  //Until new SpinalHDL release
+  def initRam[T <: Data](ram: Mem[T], onChipRamHexFile: String, hexOffset: BigInt, allowOverflow: Boolean = false): Unit = {
+    val wordSize = ram.wordType.getBitsWidth / 8
+    val initContent = Array.fill[BigInt](ram.wordCount)(0)
+    HexTools.readHexFile(onChipRamHexFile, 0, (address, data) => {
+      val addressWithoutOffset = (address - hexOffset).toLong
+      val addressWord = addressWithoutOffset / wordSize
+      if (addressWord < 0 || addressWord >= initContent.size) {
+        assert(allowOverflow)
+      } else {
+        initContent(addressWord.toInt) |= BigInt(data) << ((addressWithoutOffset.toInt % wordSize) * 8)
+      }
+    })
+    ram.initBigInt(initContent)
   }
 }

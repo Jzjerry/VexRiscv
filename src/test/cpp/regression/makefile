@@ -62,6 +62,10 @@ ADDCFLAGS += -CFLAGS -DDBUS_${DBUS}
 ADDCFLAGS += -CFLAGS -DREDO=${REDO}
 ADDCFLAGS += -CFLAGS -pthread
 ADDCFLAGS += -CFLAGS -Wno-unused-result
+ADDCFLAGS += -CFLAGS -Wno-parentheses
+ADDCFLAGS += -CFLAGS -Wno-misleading-indentation
+ADDCFLAGS += -CFLAGS -Wno-catch-value
+ADDCFLAGS += -CFLAGS -Wno-float-conversion
 
 ADDCFLAGS += -CFLAGS -DTHREAD_COUNT=${THREAD_COUNT}
 
@@ -352,7 +356,7 @@ run: compile
 
 verilate: ${VEXRISCV_FILE}
 	cp ${VEXRISCV_FILE}*.bin . | true
-	verilator -cc  ${VEXRISCV_FILE}  -O3 -CFLAGS -std=c++11 -LDFLAGS -pthread  ${ADDCFLAGS} --gdbbt ${VERILATOR_ARGS} -Wno-UNOPTFLAT -Wno-WIDTH  --x-assign fast --x-initial fast --exe main.cpp
+	verilator -cc  ${VEXRISCV_FILE}  -O3 -LDFLAGS -pthread ${ADDCFLAGS} --gdbbt ${VERILATOR_ARGS} -Wno-UNOPTFLAT -Wno-WIDTH --x-assign unique --exe main.cpp
  	
 compile: verilate
 	make  -j${THREAD_COUNT} -C obj_dir/ -f VVexRiscv.mk VVexRiscv

@@ -6,7 +6,7 @@ import spinal.lib._
 import spinal.lib.bus.amba4.axi.{Axi4Config, Axi4Shared}
 import spinal.lib.bus.avalon.{AvalonMM, AvalonMMConfig}
 import spinal.lib.bus.bmb.{Bmb, BmbAccessParameter, BmbCmd, BmbInvalidationParameter, BmbParameter, BmbSourceParameter}
-import spinal.lib.bus.wishbone.{Wishbone, WishboneConfig}
+import spinal.lib.bus.wishbone.{AddressGranularity, Wishbone, WishboneConfig}
 import spinal.lib.bus.simple._
 import vexriscv.plugin.DBusSimpleBus
 
@@ -89,7 +89,8 @@ case class DataCacheConfig(cacheSize : Int,
     tgcWidth = 0,
     tgdWidth = 0,
     useBTE = true,
-    useCTI = true
+    useCTI = true,
+    addressGranularity = AddressGranularity.WORD
   )
 
   def getBmbParameter() = BmbParameter(
@@ -168,8 +169,9 @@ case class FenceFlags() extends Bundle {
   def forceAll(): Unit ={
     List(SW,SR,SO,SI,PW,PR,PO,PI).foreach(_ := True)
   }
-  def clearAll(): Unit ={
+  def clearFlags(): this.type ={
     List(SW,SR,SO,SI,PW,PR,PO,PI).foreach(_ := False)
+    this
   }
 }
 
@@ -367,13 +369,13 @@ case class DataCacheMemBus(p : DataCacheConfig) extends Bundle with IMasterSlave
     bus.WE  := cmdBridge.wr
     bus.DAT_MOSI := cmdBridge.data
 
-    cmdBridge.ready := cmdBridge.valid && bus.ACK
+    cmdBridge.ready := cmdBridge.valid && (bus.ACK || bus.ERR)
     bus.CYC := cmdBridge.valid
     bus.STB := cmdBridge.valid
 
-    rsp.valid := RegNext(cmdBridge.valid && !bus.WE && bus.ACK) init(False)
+    rsp.valid := RegNext(cmdBridge.valid && !bus.WE && (bus.ACK || bus.ERR)) init(False)
     rsp.data  := RegNext(bus.DAT_MISO)
-    rsp.error := False //TODO
+    rsp.error := RegNext(bus.ERR)
     bus
   }
 
@@ -400,7 +402,7 @@ case class DataCacheMemBus(p : DataCacheConfig) extends Bundle with IMasterSlave
 
 
   def toBmb(syncPendingMax : Int = 32,
-            timeoutCycles : Int = 16) : Bmb = new Area{
+            timeoutCycles : Int = 32) : Bmb = new Area{
     setCompositeName(DataCacheMemBus.this, "Bridge", true)
     val pipelinedMemoryBusConfig = p.getBmbParameter()
     val bus = Bmb(pipelinedMemoryBusConfig).setCompositeName(this,"toBmb", true)
