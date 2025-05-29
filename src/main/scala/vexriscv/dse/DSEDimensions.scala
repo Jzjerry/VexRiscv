@@ -1,20 +1,18 @@
-/* Modified from test/scala/vexriscv/TestIndividualFeatures.scala */
 package vexriscv.dse
+
+
 
 import spinal.core._
 import spinal.lib.DoCmd
+import vexriscv._
 import vexriscv.demo._
 import vexriscv.ip.{DataCacheConfig, InstructionCacheConfig}
 import vexriscv.plugin._
-import vexriscv.{plugin, VexRiscv, VexRiscvConfig}
 
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
-import scala.concurrent.duration.Duration
-import scala.concurrent.{Await, ExecutionContext, Future}
-import scala.sys.process._
-import scala.util.Random
 
+import scala.util.Random
 
 abstract class ConfigUniverse
 
@@ -48,6 +46,7 @@ object VexRiscvUniverse{
   val CATCH_ALL = new VexRiscvUniverse
   val MMU = new VexRiscvUniverse
   val PMP = new VexRiscvUniverse
+  val PMPNAPOT = new VexRiscvUniverse
   val FORCE_MULDIV = new VexRiscvUniverse
   val SUPERVISOR = new VexRiscvUniverse
   val NO_WRITEBACK = new VexRiscvUniverse
@@ -518,6 +517,17 @@ class MmuPmpDimension extends VexRiscvDimension("DBus") {
         override def applyOn(config: VexRiscvConfig): Unit = {
           config.plugins += new PmpPlugin(
             regions = 16,
+            ioRange = _ (31 downto 28) === 0xF
+          )
+        }
+      }
+    } else if (universes.contains(VexRiscvUniverse.PMPNAPOT)) {
+      new VexRiscvPosition("WithPmpNapot") {
+        override def testParam = "MMU=no PMP=yes"
+
+        override def applyOn(config: VexRiscvConfig): Unit = {
+          config.plugins += new PmpPluginNapot(
+            regions = 16,
             granularity = 32,
             ioRange = _ (31 downto 28) === 0xF
           )
@@ -538,12 +548,13 @@ class MmuPmpDimension extends VexRiscvDimension("DBus") {
 }
 
 
+
 trait CatchAllPosition
 
 
 class CsrDimension(freertos : String, zephyr : String, linux : String) extends VexRiscvDimension("Csr") {
   override def randomPositionImpl(universes: Seq[ConfigUniverse], r: Random) = {
-    val pmp = universes.contains(VexRiscvUniverse.PMP)
+    val pmp = universes.contains(VexRiscvUniverse.PMP) || universes.contains(VexRiscvUniverse.PMPNAPOT)
     val catchAll = universes.contains(VexRiscvUniverse.CATCH_ALL)
     val supervisor = universes.contains(VexRiscvUniverse.SUPERVISOR)
     if(supervisor){
@@ -598,79 +609,8 @@ class DecoderDimension extends VexRiscvDimension("Decoder") {
         catchIllegalInstruction = catchAll,
         throwIllegalInstruction = false
       )
+
+//      override def isCompatibleWith(positions: Seq[ConfigPosition[VexRiscvConfig]]) = catchAll == positions.exists(_.isInstanceOf[CatchAllPosition])
     }
   }
-}
-
-object GenRandomVexriscv extends App {
-  val seed = sys.env.getOrElse("VEXRISCV_REGRESSION_SEED", Random.nextLong().toString).toLong
-
-  val rvcRate = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_RVC_RATE", "0.5").toDouble
-  val linuxRegression = sys.env.getOrElse("VEXRISCV_REGRESSION_LINUX_REGRESSION", "no")
-  val coremarkRegression = sys.env.getOrElse("VEXRISCV_REGRESSION_COREMARK", "yes")
-  val zephyrCount = sys.env.getOrElse("VEXRISCV_REGRESSION_ZEPHYR_COUNT", "4")
-  val demwRate = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_DEMW_RATE", "0.6").toDouble
-  val demRate = sys.env.getOrElse("VEXRISCV_REGRESSION_CONFIG_DEM_RATE", "0.5").toDouble
-  val stopOnError = sys.env.getOrElse("VEXRISCV_REGRESSION_STOP_ON_ERROR", "yes")
-  val lock = new{}
-
-
-  val dimensions = List(
-    new IBusDimension(rvcRate),
-    new DBusDimension,
-    new MulDivDimension,
-    new ShiftDimension,
-    new BranchDimension,
-    new HazardDimension,
-    new RegFileDimension,
-    new SrcDimension,
-    new CsrDimension("0", zephyrCount, linuxRegression), 
-    new DecoderDimension,
-    new DebugDimension,
-    new MmuPmpDimension
-  )
-
-  var clockCounter = 0l
-  var startAt = System.currentTimeMillis()
-  def doGen(positionsToApply : List[VexRiscvPosition], universes : mutable.HashSet[VexRiscvUniverse]): Unit ={
-
-    val noMemory = universes.contains(VexRiscvUniverse.NO_MEMORY)
-    val noWriteback = universes.contains(VexRiscvUniverse.NO_WRITEBACK)
-    val name = (if(noMemory) "noMemoryStage_" else "") + (if(noWriteback) "noWritebackStage_" else "") + positionsToApply.map(d => d.dimension.name + "_" + d.name).mkString("_")
-    println(s"Configuration=$name")
-    //Generate RTL
-    SpinalVerilog({
-        val config = VexRiscvConfig(
-          withMemoryStage = !noMemory,
-          withWriteBackStage = !noWriteback,
-          plugins = List(
-            new IntAluPlugin,
-            new YamlPlugin("cpu0.yaml")
-          )
-        )
-        for (positionToApply <- positionsToApply) positionToApply.applyOn(config)
-        new VexRiscv(config)
-      })
-    }
-
-  val rand = new Random(seed)
-
-  println(s"Seed=$seed")
-
-  var positions : List[VexRiscvPosition] = null
-  var universe = mutable.HashSet[VexRiscvUniverse]()
-  if(rand.nextDouble() < 0.5) universe += VexRiscvUniverse.EXECUTE_RF
-    if(demwRate > rand.nextDouble()){
-    }else if(demRate > rand.nextDouble()){
-      universe += VexRiscvUniverse.NO_WRITEBACK
-    } else {
-      universe += VexRiscvUniverse.NO_WRITEBACK
-      universe += VexRiscvUniverse.NO_MEMORY
-    }
-
-  do{
-    positions = dimensions.map(d => d.randomPosition(universe.toList, rand))
-  }while(!positions.forall(_.isCompatibleWith(positions)))
-
-  doGen(positions, universe)
 }

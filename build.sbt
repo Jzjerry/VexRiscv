@@ -12,7 +12,8 @@ lazy val root = (project in file(".")).
       "com.github.spinalhdl" %% "spinalhdl-lib" % spinalVersion,
       compilerPlugin("com.github.spinalhdl" %% "spinalhdl-idsl-plugin" % spinalVersion),
       "org.scalatest" %% "scalatest" % "3.2.17",
-      "org.yaml" % "snakeyaml" % "1.8"
+      "org.yaml" % "snakeyaml" % "1.8",
+      "org.scala-lang.modules" %% "scala-parser-combinators" % "1.1.2"
     ),
     name := "VexRiscv"
   )
